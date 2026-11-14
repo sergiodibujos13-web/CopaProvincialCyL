@@ -48,11 +48,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ads.init(this)
-        setContent {
-            MaterialTheme {
-                Surface(Modifier.fillMaxSize()) { GameApp(this@MainActivity) }
-            }
-        }
+               setContent {
+            AppTheme { GameApp(this@MainActivity) }
+               } 
     }
 }
 
