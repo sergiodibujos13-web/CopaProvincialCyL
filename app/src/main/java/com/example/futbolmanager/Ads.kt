@@ -16,8 +16,9 @@ import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.rewarded.RewardedAd
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 
-const val BANNER_ID = "ca-app-pub-3940256099942544/6300978111"
-const val REWARDED_ID = "ca-app-pub-3940256099942544/5224354917"
+// IDs de PRUEBA de AdMob. Sustituyelos por los tuyos antes de publicar.
+const val BANNER_ID = "ca-app-pub-6910178285236368/9857266490"
+const val REWARDED_ID = "ca-app-pub-6910178285236368/5614769151"
 
 object Ads {
     fun init(ctx: Context) {
