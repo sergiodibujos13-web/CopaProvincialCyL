@@ -136,7 +136,7 @@ fun GameApp(activity: Activity) {
                     LineupScreen(
                         me = g.me,
                         rival = g.byId(g.opponent()!!),
-                        title = g.slotTitle(g.current!!),
+                        title = g.slotTitle(g.current!!) + (if (g.isHome()) " · 🏟 En casa" else " · ✈ Fuera"),
                         formation = formation,
                         selected = selected,
                         energyOf = { g.en(it) },
@@ -157,6 +157,7 @@ fun GameApp(activity: Activity) {
                             me = g.me,
                             rival = g.byId(g.opponent()!!),
                             res = r,
+                            isHome = g.isHome(),
                             onContinue = {
                                 lastMsg = g.describe(r)
                                 g.applyUserResult(r, starters)

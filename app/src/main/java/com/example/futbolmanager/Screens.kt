@@ -163,9 +163,15 @@ fun HubScreen(
                     Column(Modifier.padding(12.dp)) {
                         Text("Próximo: ${g.slotTitle(s)}", fontWeight = FontWeight.Bold)
                         Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Crest(g.me, 40.dp)
-                            Text("  vs  ")
-                            Crest(opp, 40.dp)
+                            if (g.isHome()) {
+                                Crest(g.me, 40.dp)
+                                Text("  vs  ")
+                                Crest(opp, 40.dp)
+                            } else {
+                                Crest(opp, 40.dp)
+                                Text("  vs  ")
+                                Crest(g.me, 40.dp)
+                            }
                             Text("  ${opp.name}", fontSize = 18.sp)
                         }
                         Text(if (g.isHome()) "🏟 En casa" else "✈ Fuera")
@@ -206,42 +212,97 @@ fun HubScreen(
 
 @Composable
 fun TableScreen(g: Game, tick: Int, onBack: () -> Unit) {
-    val tb = g.table()
+    var tab by remember { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Volver") }
-        Text("🔵 Champions · 🟠 Europa League · 🔴 Descenso", Modifier.padding(vertical = 6.dp), fontSize = 13.sp)
-        Row(Modifier.fillMaxWidth()) {
-            Text("#", Modifier.width(32.dp))
-            Text("", Modifier.width(28.dp))
-            Text("Equipo", Modifier.weight(1f))
-            Text("PJ", Modifier.width(32.dp))
-            Text("DG", Modifier.width(38.dp))
-            Text("Pts", Modifier.width(36.dp), fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            listOf("Liga", "Champions", "Europa L.").forEachIndexed { i, n ->
+                val colors = if (tab == i) ButtonDefaults.buttonColors() else ButtonDefaults.filledTonalButtonColors()
+                Button(
+                    onClick = { tab = i },
+                    colors = colors,
+                    modifier = Modifier.weight(1f).padding(horizontal = 2.dp)
+                ) { Text(n, fontSize = 13.sp) }
+            }
         }
+        if (tab == 0) LeagueTable(g, Modifier.weight(1f))
+        else CupTables(g, if (tab == 1) g.cl else g.el, Modifier.weight(1f))
+    }
+}
+
+@Composable
+fun TableHeader() {
+    Row(Modifier.fillMaxWidth()) {
+        Text("#", Modifier.width(32.dp))
+        Text("", Modifier.width(28.dp))
+        Text("Equipo", Modifier.weight(1f))
+        Text("PJ", Modifier.width(32.dp))
+        Text("DG", Modifier.width(38.dp))
+        Text("Pts", Modifier.width(36.dp), fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun TeamRow(g: Game, r: StandRow, pos: Int, bar: Color) {
+    val t = g.byId(r.id)
+    val mine = t.id == g.myId
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(4.dp).height(24.dp).background(bar))
+        Text("$pos", Modifier.width(28.dp).padding(start = 4.dp))
+        Crest(t, 22.dp)
+        Text(
+            t.name,
+            Modifier.weight(1f).padding(start = 6.dp),
+            fontWeight = if (mine) FontWeight.Bold else FontWeight.Normal,
+            color = if (mine) Gold else Color.Unspecified
+        )
+        Text("${r.pj}", Modifier.width(32.dp))
+        Text("${r.dg}", Modifier.width(38.dp))
+        Text("${r.pts}", Modifier.width(36.dp), fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun LeagueTable(g: Game, modifier: Modifier) {
+    val tb = g.table()
+    Column(modifier) {
+        Text("🔵 Champions · 🟠 Europa League · 🔴 Descenso", Modifier.padding(bottom = 6.dp), fontSize = 13.sp)
+        TableHeader()
         LazyColumn(Modifier.weight(1f)) {
             itemsIndexed(tb) { i, r ->
-                val t = g.byId(r.id)
                 val bar = when {
                     i < 4 -> Color(0xFF42A5F5)
                     i < 7 -> Color(0xFFFFA726)
                     i >= 17 -> Color(0xFFEF5350)
                     else -> Color.Transparent
                 }
-                val mine = t.id == g.myId
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(4.dp).height(24.dp).background(bar))
-                    Text("${i + 1}", Modifier.width(28.dp).padding(start = 4.dp))
-                    Crest(t, 22.dp)
-                    Text(
-                        t.name,
-                        Modifier.weight(1f).padding(start = 6.dp),
-                        fontWeight = if (mine) FontWeight.Bold else FontWeight.Normal,
-                        color = if (mine) Gold else Color.Unspecified
-                    )
-                    Text("${r.pj}", Modifier.width(32.dp))
-                    Text("${r.dg}", Modifier.width(38.dp))
-                    Text("${r.pts}", Modifier.width(36.dp), fontWeight = FontWeight.Bold)
+                TeamRow(g, r, i + 1, bar)
+            }
+        }
+    }
+}
+
+@Composable
+fun CupTables(g: Game, c: Cup, modifier: Modifier) {
+    LazyColumn(modifier) {
+        item {
+            Text("🟢 Los 2 primeros de cada grupo pasan a cuartos", Modifier.padding(bottom = 6.dp), fontSize = 13.sp)
+        }
+        itemsIndexed(c.groups) { gi, grp ->
+            Column(Modifier.padding(bottom = 10.dp)) {
+                Text("Grupo ${'A' + gi}", fontWeight = FontWeight.Bold, color = Gold)
+                TableHeader()
+                g.groupTable(c, grp).forEachIndexed { i, r ->
+                    TeamRow(g, r, i + 1, if (i < 2) Color(0xFF66BB6A) else Color.Transparent)
                 }
+            }
+        }
+        if (c.teams.isNotEmpty()) {
+            item {
+                Text(
+                    "Eliminatorias · quedan: " + c.teams.joinToString(", ") { g.byId(it).name },
+                    Modifier.padding(top = 4.dp)
+                )
             }
         }
     }
@@ -379,6 +440,7 @@ fun MatchScreen(
     me: Team,
     rival: Team,
     res: MatchResult,
+    isHome: Boolean,
     onContinue: () -> Unit
 ) {
     var minute by remember(res) { mutableIntStateOf(0) }
@@ -390,20 +452,23 @@ fun MatchScreen(
     }
     val shown = res.events.filter { it.minute <= minute }
     val last = shown.lastOrNull()
+    val mine = last?.homeGoals ?: 0
+    val theirs = last?.awayGoals ?: 0
+    val left = if (isHome) me else rival
+    val right = if (isHome) rival else me
+    val leftGoals = if (isHome) mine else theirs
+    val rightGoals = if (isHome) theirs else mine
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Crest(me, 48.dp)
-            Text(
-                "${last?.homeGoals ?: 0} - ${last?.awayGoals ?: 0}",
-                fontSize = 34.sp, fontWeight = FontWeight.Bold
-            )
-            Crest(rival, 48.dp)
+            Crest(left, 48.dp)
+            Text("$leftGoals - $rightGoals", fontSize = 34.sp, fontWeight = FontWeight.Bold)
+            Crest(right, 48.dp)
         }
-        Text("${me.name} vs ${rival.name}", Modifier.padding(top = 4.dp))
+        Text("${left.name} vs ${right.name}", Modifier.padding(top = 4.dp))
         Text("⏱ $minute'", Modifier.padding(vertical = 6.dp))
         LazyColumn(Modifier.weight(1f)) {
             items(shown.reversed()) { e -> Text("${e.minute}'  ${e.text}", Modifier.padding(vertical = 2.dp)) }

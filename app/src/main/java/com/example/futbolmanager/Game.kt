@@ -211,7 +211,7 @@ fun quickWinner(a: Team, b: Team, rnd: Random): Int {
     return if (x > y) a.id else if (y > x) b.id else if (rnd.nextBoolean()) a.id else b.id
 }
 
-class Row(val id: Int) {
+class StandRow(val id: Int) {
     var pj = 0
     var w = 0
     var d = 0
@@ -222,9 +222,16 @@ class Row(val id: Int) {
     val dg: Int get() = gf - gc
 }
 
-class Cup(val name: String, var teams: MutableList<Int>, var round: Int = 0)
+class Cup(val name: String) {
+    var groups: List<List<Int>> = emptyList()
+    var rows = HashMap<Int, StandRow>()
+    var teams: MutableList<Int> = mutableListOf()
+    var round = 0
+}
 
 data class Slot(val euro: Boolean, val idx: Int)
+
+val koNames = listOf("Cuartos", "Semifinales", "Final")
 
 fun buildFixtures(ids: List<Int>): List<List<Pair<Int, Int>>> {
     val n = ids.size
@@ -235,7 +242,8 @@ fun buildFixtures(ids: List<Int>): List<List<Pair<Int, Int>>> {
         for (i in 0 until n / 2) {
             val a = arr[i]
             val b = arr[n - 1 - i]
-            m.add(if ((r + i) % 2 == 0) a to b else b to a)
+            val aHome = if (i == 0) r % 2 == 1 else r % 2 == 0
+            m.add(if (aHome) a to b else b to a)
         }
         rounds.add(m)
         val last = arr.removeAt(n - 1)
@@ -244,10 +252,52 @@ fun buildFixtures(ids: List<Int>): List<List<Pair<Int, Int>>> {
     return rounds + rounds.map { rd -> rd.map { it.second to it.first } }
 }
 
-private fun jsonInts(a: JSONArray): MutableList<Int> {
-    val l = mutableListOf<Int>()
-    for (i in 0 until a.length()) l.add(a.getInt(i))
-    return l
+private fun readRows(a: JSONArray): HashMap<Int, StandRow> {
+    val m = HashMap<Int, StandRow>()
+    for (i in 0 until a.length()) {
+        val x = a.getJSONArray(i)
+        val r = StandRow(x.getInt(0))
+        r.pj = x.getInt(1); r.w = x.getInt(2); r.d = x.getInt(3)
+        r.l = x.getInt(4); r.gf = x.getInt(5); r.gc = x.getInt(6)
+        m[r.id] = r
+    }
+    return m
+}
+
+private fun rowsJson(m: Map<Int, StandRow>): JSONArray {
+    val a = JSONArray()
+    for (r in m.values) a.put(JSONArray().put(r.id).put(r.pj).put(r.w).put(r.d).put(r.l).put(r.gf).put(r.gc))
+    return a
+}
+
+private fun cupJson(c: Cup): JSONObject {
+    val o = JSONObject()
+    o.put("teams", JSONArray(c.teams))
+    o.put("round", c.round)
+    val ga = JSONArray()
+    for (grp in c.groups) ga.put(JSONArray(grp))
+    o.put("groups", ga)
+    o.put("rows", rowsJson(c.rows))
+    return o
+}
+
+private fun readCup(name: String, o: JSONObject): Cup {
+    val c = Cup(name)
+    c.round = o.getInt("round")
+    val ta = o.getJSONArray("teams")
+    c.teams = mutableListOf()
+    for (i in 0 until ta.length()) c.teams.add(ta.getInt(i))
+    val ga = o.getJSONArray("groups")
+    val gl = mutableListOf<List<Int>>()
+    for (i in 0 until ga.length()) {
+        val ar = ga.getJSONArray(i)
+        val l = mutableListOf<Int>()
+        for (k in 0 until ar.length()) l.add(ar.getInt(k))
+        gl.add(l)
+    }
+    c.groups = gl
+    c.rows = readRows(o.getJSONArray("rows"))
+    return c
 }
 
 class Game(val teams: List<Team>, val myId: Int) {
@@ -259,24 +309,30 @@ class Game(val teams: List<Team>, val myId: Int) {
     var seasonDone = false
     var adBonus = false
     var userOut = false
+    var userQual = false
     var userCupWins = 0
     var lastPos = 0
     var lastSummary: List<Pair<String, Int>> = emptyList()
     var energy = HashMap<Int, Int>()
-    var rows = HashMap<Int, Row>()
+    var rows = HashMap<Int, StandRow>()
     var fixtures: List<List<Pair<Int, Int>>> = emptyList()
-    var cl = Cup("Champions League", mutableListOf())
-    var el = Cup("Europa League", mutableListOf())
+    var cl = Cup("Champions League")
+    var el = Cup("Europa League")
     var userCup: Cup? = null
 
     private val map = teams.associateBy { it.id }
     private val rnd: Random = Random.Default
 
+    // Huecos del calendario: jornadas de liga y, entre medias, Champions / Europa League
     val slots: List<Slot> = buildList {
+        val groupAfter = listOf(4, 7, 10, 13, 16, 19)
+        val koAfter = listOf(25, 30, 35)
         for (j in 0 until 38) {
             add(Slot(false, j))
-            val r = listOf(6, 14, 22, 30).indexOf(j + 1)
-            if (r >= 0) add(Slot(true, r))
+            val g = groupAfter.indexOf(j + 1)
+            if (g >= 0) add(Slot(true, g))
+            val k = koAfter.indexOf(j + 1)
+            if (k >= 0) add(Slot(true, 6 + k))
         }
     }
 
@@ -291,6 +347,11 @@ class Game(val teams: List<Team>, val myId: Int) {
     private fun leaguePair(j: Int): Pair<Int, Int> =
         fixtures[j].first { it.first == myId || it.second == myId }
 
+    private fun cupPair(c: Cup, day: Int): Pair<Int, Int> {
+        val grp = c.groups.first { myId in it }
+        return buildFixtures(grp)[day].first { it.first == myId || it.second == myId }
+    }
+
     fun opponent(): Int? {
         val s = current ?: return null
         if (!s.euro) {
@@ -298,6 +359,10 @@ class Game(val teams: List<Team>, val myId: Int) {
             return if (p.first == myId) p.second else p.first
         }
         val c = userCup ?: return null
+        if (s.idx < 6) {
+            val p = cupPair(c, s.idx)
+            return if (p.first == myId) p.second else p.first
+        }
         val k = c.teams.indexOf(myId)
         if (k < 0) return null
         return c.teams[k xor 1]
@@ -305,26 +370,37 @@ class Game(val teams: List<Team>, val myId: Int) {
 
     fun isHome(): Boolean {
         val s = current ?: return true
-        return s.euro || leaguePair(s.idx).first == myId
+        if (!s.euro) return leaguePair(s.idx).first == myId
+        val c = userCup ?: return true
+        if (s.idx < 6) return cupPair(c, s.idx).first == myId
+        return c.teams.indexOf(myId) % 2 == 0
     }
 
-    fun slotTitle(s: Slot): String =
-        if (!s.euro) "Liga · Jornada ${s.idx + 1}"
-        else (if (userCup === el) "Europa League" else "Champions League") + " · " + euroRounds[s.idx]
+    fun slotTitle(s: Slot): String {
+        if (!s.euro) return "Liga · Jornada ${s.idx + 1}"
+        val nm = if (userCup === el) "Europa League" else "Champions League"
+        return nm + " · " + (if (s.idx < 6) "Fase de grupos J${s.idx + 1}" else koNames[s.idx - 6])
+    }
+
+    private fun newCup(name: String, ids: List<Int>): Cup {
+        val c = Cup(name)
+        c.groups = ids.chunked(4)
+        for (id in ids) c.rows[id] = StandRow(id)
+        return c
+    }
 
     fun startSeason(ranking: List<Int>) {
         val r = Random(seed)
         rows = HashMap()
-        for (t in league) rows[t.id] = Row(t.id)
+        for (t in league) rows[t.id] = StandRow(t.id)
         fixtures = buildFixtures(league.map { it.id }.shuffled(r))
         val foreign = teams.filter { it.id >= 100 }.map { it.id }.shuffled(r)
-        val c = Cup("Champions League", (ranking.take(4) + foreign.take(12)).shuffled(r).toMutableList())
-        val e = Cup("Europa League", (ranking.subList(4, 7) + foreign.subList(12, 25)).shuffled(r).toMutableList())
-        cl = c
-        el = e
-        userCup = if (myId in c.teams) c else if (myId in e.teams) e else null
+        cl = newCup("Champions League", (ranking.take(4) + foreign.take(12)).shuffled(r))
+        el = newCup("Europa League", (ranking.subList(4, 7) + foreign.subList(12, 25)).shuffled(r))
+        userCup = if (cl.groups.any { myId in it }) cl else if (el.groups.any { myId in it }) el else null
         userCupWins = 0
         userOut = false
+        userQual = false
         slotIndex = 0
         seasonDone = false
         adBonus = false
@@ -341,59 +417,104 @@ class Game(val teams: List<Team>, val myId: Int) {
         startSeason(rank)
     }
 
-    private fun userInRound(r: Int): Boolean = userCup != null && !userOut && userCupWins == r
+    private fun userInRound(idx: Int): Boolean {
+        val c = userCup ?: return false
+        if (idx < 6) return true
+        return !userOut && userQual && userCupWins == idx - 6 && myId in c.teams
+    }
 
     private fun skipAuto() {
         while (slotIndex < slots.size) {
             val s = slots[slotIndex]
             if (!s.euro) return
             if (userInRound(s.idx)) return
-            playEuroRound(null)
+            playEuroSlot(s.idx, null)
             slotIndex++
         }
         seasonDone = true
         closeSeason()
     }
 
-    private fun playEuroRound(res: MatchResult?) {
+    private fun playEuroSlot(idx: Int, res: MatchResult?) {
         for (c in listOf(cl, el)) {
-            val next = mutableListOf<Int>()
-            var k = 0
-            while (k + 1 < c.teams.size) {
-                val a = c.teams[k]
-                val b = c.teams[k + 1]
-                val winner: Int
-                if (res != null && (a == myId || b == myId)) {
-                    val other = if (a == myId) b else a
-                    if (res.userWon) {
-                        winner = myId
-                        userCupWins++
-                    } else {
-                        winner = other
-                        userOut = true
-                    }
-                } else {
-                    winner = quickWinner(byId(a), byId(b), rnd)
-                }
-                next.add(winner)
-                k += 2
-            }
-            c.teams = next
-            c.round++
+            if (idx < 6) playGroupDay(c, idx, res) else playKnockout(c, res)
         }
     }
 
-    private fun record(x: Int, y: Int, gx: Int, gy: Int) {
-        val rx = rows.getValue(x)
-        val ry = rows.getValue(y)
+    private fun playGroupDay(c: Cup, day: Int, res: MatchResult?) {
+        for (grp in c.groups) {
+            for ((h, a) in buildFixtures(grp)[day]) {
+                if (res != null && (h == myId || a == myId)) {
+                    if (h == myId) record(c.rows, h, a, res.home, res.away)
+                    else record(c.rows, h, a, res.away, res.home)
+                } else {
+                    val (x, y) = quickScore(byId(h), byId(a), rnd)
+                    record(c.rows, h, a, x, y)
+                }
+            }
+        }
+        if (day == 5) {
+            val firsts = mutableListOf<Int>()
+            val seconds = mutableListOf<Int>()
+            for (grp in c.groups) {
+                val t = groupTable(c, grp)
+                firsts.add(t[0].id)
+                seconds.add(t[1].id)
+            }
+            c.teams = mutableListOf(
+                firsts[0], seconds[1], firsts[1], seconds[0],
+                firsts[2], seconds[3], firsts[3], seconds[2]
+            )
+            c.round = 0
+            if (c === userCup) {
+                userQual = myId in c.teams
+                if (!userQual) userOut = true
+            }
+        }
+    }
+
+    private fun playKnockout(c: Cup, res: MatchResult?) {
+        if (c.teams.size < 2) return
+        val next = mutableListOf<Int>()
+        var k = 0
+        while (k + 1 < c.teams.size) {
+            val a = c.teams[k]
+            val b = c.teams[k + 1]
+            val winner: Int
+            if (res != null && (a == myId || b == myId)) {
+                val other = if (a == myId) b else a
+                if (res.userWon) {
+                    winner = myId
+                    userCupWins++
+                } else {
+                    winner = other
+                    userOut = true
+                }
+            } else {
+                winner = quickWinner(byId(a), byId(b), rnd)
+            }
+            next.add(winner)
+            k += 2
+        }
+        c.teams = next
+        c.round++
+    }
+
+    private fun record(m: HashMap<Int, StandRow>, x: Int, y: Int, gx: Int, gy: Int) {
+        val rx = m.getValue(x)
+        val ry = m.getValue(y)
         rx.pj++; ry.pj++
         rx.gf += gx; rx.gc += gy
         ry.gf += gy; ry.gc += gx
         if (gx > gy) { rx.w++; ry.l++ } else if (gx < gy) { ry.w++; rx.l++ } else { rx.d++; ry.d++ }
     }
 
-    fun table(): List<Row> =
-        rows.values.sortedWith(compareByDescending<Row> { it.pts }.thenByDescending { it.dg }.thenByDescending { it.gf })
+    private fun sorted(list: List<StandRow>): List<StandRow> =
+        list.sortedWith(compareByDescending<StandRow> { it.pts }.thenByDescending { it.dg }.thenByDescending { it.gf })
+
+    fun table(): List<StandRow> = sorted(rows.values.toList())
+
+    fun groupTable(c: Cup, grp: List<Int>): List<StandRow> = sorted(grp.map { c.rows.getValue(it) })
 
     fun position(): Int = table().indexOfFirst { it.id == myId } + 1
 
@@ -401,14 +522,16 @@ class Game(val teams: List<Team>, val myId: Int) {
         val s = current!!
         val opp = byId(opponent()!!)
         val oppLineup = autoLineup(opp, formations[rnd.nextInt(formations.size)]) { 100 }
-        return simulate(me, starters, { effRating(it, en(it)) }, opp, oppLineup, { it.rating.toDouble() }, rnd, !s.euro)
+        val allowDraw = !s.euro || s.idx < 6
+        return simulate(me, starters, { effRating(it, en(it)) }, opp, oppLineup, { it.rating.toDouble() }, rnd, allowDraw)
     }
 
     fun describe(r: MatchResult): String {
         val s = current ?: return ""
         val o = byId(opponent() ?: return "")
-        return slotTitle(s) + ": " + me.name + " " + r.home + "-" + r.away + " " + o.name +
-            (r.penalties?.let { " · $it" } ?: "")
+        val score = if (isHome()) me.name + " " + r.home + "-" + r.away + " " + o.name
+        else o.name + " " + r.away + "-" + r.home + " " + me.name
+        return slotTitle(s) + ": " + score + (r.penalties?.let { " · $it" } ?: "")
     }
 
     fun applyUserResult(res: MatchResult, starters: List<Player>) {
@@ -421,15 +544,15 @@ class Game(val teams: List<Team>, val myId: Int) {
         if (!s.euro) {
             val pair = leaguePair(s.idx)
             val opp = if (pair.first == myId) pair.second else pair.first
-            record(myId, opp, res.home, res.away)
+            record(rows, myId, opp, res.home, res.away)
             for ((h, a) in fixtures[s.idx]) {
                 if (h != myId && a != myId) {
                     val (x, y) = quickScore(byId(h), byId(a), rnd)
-                    record(h, a, x, y)
+                    record(rows, h, a, x, y)
                 }
             }
         } else {
-            playEuroRound(res)
+            playEuroSlot(s.idx, res)
         }
         slotIndex++
         skipAuto()
@@ -446,8 +569,19 @@ class Game(val teams: List<Team>, val myId: Int) {
                 val home = p.first == myId
                 val o = byId(if (home) p.second else p.first)
                 out.add("J${s.idx + 1} · " + (if (home) "vs " else "en ") + o.name)
-            } else if (userCup != null && !userOut) {
-                out.add((if (userCup === cl) "Champions" else "Europa League") + " · " + euroRounds[s.idx])
+            } else {
+                val c = userCup
+                if (c != null) {
+                    val nm = if (c === cl) "Champions" else "Europa League"
+                    if (s.idx < 6) {
+                        val p = cupPair(c, s.idx)
+                        val home = p.first == myId
+                        val o = byId(if (home) p.second else p.first)
+                        out.add(nm + " · Grupos J${s.idx + 1} · " + (if (home) "vs " else "en ") + o.name)
+                    } else if (!userOut) {
+                        out.add(nm + " · " + koNames[s.idx - 6])
+                    }
+                }
             }
             i++
         }
@@ -477,9 +611,10 @@ class Game(val teams: List<Team>, val myId: Int) {
             val part = if (isCl) 10 else 5
             val prize = if (isCl) listOf(0, 12, 20, 30, 50) else listOf(0, 6, 10, 15, 25)
             val reached = listOf("", "cuartos", "semifinales", "la final", "campeón")
+            val stage = if (!userQual) 0 else 1 + userCupWins
             out.add(Pair("$nm: participación", part))
-            if (userCupWins > 0) out.add(Pair("$nm: llegar a ${reached[userCupWins]}", prize[userCupWins]))
-            if (userCupWins >= 4) {
+            if (stage > 0) out.add(Pair("$nm: llegar a ${reached[stage]}", prize[stage]))
+            if (stage >= 4) {
                 val trofeo = if (isCl) 30 else 15
                 out.add(Pair("🏆 Trofeo $nm", trofeo))
             }
@@ -517,6 +652,7 @@ class Game(val teams: List<Team>, val myId: Int) {
     // ---------- Guardado ----------
     fun toJson(): String {
         val o = JSONObject()
+        o.put("ver", 2)
         o.put("my", myId)
         o.put("season", season)
         o.put("budget", budget)
@@ -524,6 +660,7 @@ class Game(val teams: List<Team>, val myId: Int) {
         o.put("seed", seed)
         o.put("done", seasonDone)
         o.put("out", userOut)
+        o.put("qual", userQual)
         o.put("wins", userCupWins)
         o.put("bonus", adBonus)
         o.put("lastpos", lastPos)
@@ -539,13 +676,9 @@ class Game(val teams: List<Team>, val myId: Int) {
             ts.put(to)
         }
         o.put("teams", ts)
-        val ra = JSONArray()
-        for (r in rows.values) ra.put(JSONArray().put(r.id).put(r.pj).put(r.w).put(r.d).put(r.l).put(r.gf).put(r.gc))
-        o.put("rows", ra)
-        o.put("cl", JSONArray(cl.teams))
-        o.put("clr", cl.round)
-        o.put("el", JSONArray(el.teams))
-        o.put("elr", el.round)
+        o.put("rows", rowsJson(rows))
+        o.put("cl", cupJson(cl))
+        o.put("el", cupJson(el))
         val ea = JSONArray()
         for ((k, v) in energy) ea.put(JSONArray().put(k).put(v))
         o.put("energy", ea)
@@ -558,6 +691,7 @@ class Game(val teams: List<Team>, val myId: Int) {
     companion object {
         fun fromJson(s: String): Game {
             val o = JSONObject(s)
+            if (o.getInt("ver") != 2) throw IllegalStateException("partida antigua")
             val ts = o.getJSONArray("teams")
             val list = ArrayList<Team>()
             for (i in 0 until ts.length()) {
@@ -577,20 +711,14 @@ class Game(val teams: List<Team>, val myId: Int) {
             g.seed = o.getInt("seed")
             g.seasonDone = o.getBoolean("done")
             g.userOut = o.getBoolean("out")
+            g.userQual = o.getBoolean("qual")
             g.userCupWins = o.getInt("wins")
             g.adBonus = o.getBoolean("bonus")
             g.lastPos = o.getInt("lastpos")
             g.fixtures = buildFixtures(g.league.map { it.id }.shuffled(Random(g.seed)))
-            val ra = o.getJSONArray("rows")
-            for (i in 0 until ra.length()) {
-                val a = ra.getJSONArray(i)
-                val r = Row(a.getInt(0))
-                r.pj = a.getInt(1); r.w = a.getInt(2); r.d = a.getInt(3)
-                r.l = a.getInt(4); r.gf = a.getInt(5); r.gc = a.getInt(6)
-                g.rows[r.id] = r
-            }
-            g.cl = Cup("Champions League", jsonInts(o.getJSONArray("cl")), o.getInt("clr"))
-            g.el = Cup("Europa League", jsonInts(o.getJSONArray("el")), o.getInt("elr"))
+            g.rows = readRows(o.getJSONArray("rows"))
+            g.cl = readCup("Champions League", o.getJSONObject("cl"))
+            g.el = readCup("Europa League", o.getJSONObject("el"))
             val uc = o.getString("cup")
             g.userCup = if (uc == "cl") g.cl else if (uc == "el") g.el else null
             val ea = o.getJSONArray("energy")
