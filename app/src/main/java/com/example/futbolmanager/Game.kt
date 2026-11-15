@@ -222,7 +222,14 @@ class StandRow(val id: Int) {
     val dg: Int get() = gf - gc
 }
 
+class Pal(var liga: Int = 0, var champions: Int = 0, var europa: Int = 0)
+
+class KoTie(val a: Int, val b: Int, val ga: Int, val gb: Int, val pen: Boolean, val w: Int)
+
+class Offer(val playerId: Int, val buyerId: Int, val amount: Int)
+
 class Cup(val name: String) {
+    var ko: MutableList<MutableList<KoTie>> = mutableListOf()
     var groups: List<List<Int>> = emptyList()
     var rows = HashMap<Int, StandRow>()
     var teams: MutableList<Int> = mutableListOf()
@@ -278,6 +285,13 @@ private fun cupJson(c: Cup): JSONObject {
     for (grp in c.groups) ga.put(JSONArray(grp))
     o.put("groups", ga)
     o.put("rows", rowsJson(c.rows))
+    val ka = JSONArray()
+    for (ties in c.ko) {
+        val ra = JSONArray()
+        for (t in ties) ra.put(JSONArray().put(t.a).put(t.b).put(t.ga).put(t.gb).put(if (t.pen) 1 else 0).put(t.w))
+        ka.put(ra)
+    }
+    o.put("ko", ka)
     return o
 }
 
@@ -297,6 +311,18 @@ private fun readCup(name: String, o: JSONObject): Cup {
     }
     c.groups = gl
     c.rows = readRows(o.getJSONArray("rows"))
+    val ka = o.optJSONArray("ko")
+    if (ka != null) {
+        for (i in 0 until ka.length()) {
+            val ra = ka.getJSONArray(i)
+            val ties = mutableListOf<KoTie>()
+            for (k in 0 until ra.length()) {
+                val t = ra.getJSONArray(k)
+                ties.add(KoTie(t.getInt(0), t.getInt(1), t.getInt(2), t.getInt(3), t.getInt(4) == 1, t.getInt(5)))
+            }
+            c.ko.add(ties)
+        }
+    }
     return c
 }
 
@@ -319,6 +345,10 @@ class Game(val teams: List<Team>, val myId: Int) {
     var cl = Cup("Champions League")
     var el = Cup("Europa League")
     var userCup: Cup? = null
+    var pal = HashMap<Int, Pal>()
+    var champs: MutableList<String> = mutableListOf()
+    var transfers: MutableList<String> = mutableListOf()
+    var offers: MutableList<Offer> = mutableListOf()
 
     private val map = teams.associateBy { it.id }
     private val rnd: Random = Random.Default
@@ -406,6 +436,9 @@ class Game(val teams: List<Team>, val myId: Int) {
         adBonus = false
         energy = HashMap()
         skipAuto()
+        offers = mutableListOf()
+        doDeals(8)
+        maybeOffer()
         tick++
     }
 
@@ -476,13 +509,20 @@ class Game(val teams: List<Team>, val myId: Int) {
     private fun playKnockout(c: Cup, res: MatchResult?) {
         if (c.teams.size < 2) return
         val next = mutableListOf<Int>()
+        val ties = mutableListOf<KoTie>()
         var k = 0
         while (k + 1 < c.teams.size) {
             val a = c.teams[k]
             val b = c.teams[k + 1]
             val winner: Int
+            val ga: Int
+            val gb: Int
+            val pen: Boolean
             if (res != null && (a == myId || b == myId)) {
                 val other = if (a == myId) b else a
+                ga = if (a == myId) res.home else res.away
+                gb = if (a == myId) res.away else res.home
+                pen = res.penalties != null
                 if (res.userWon) {
                     winner = myId
                     userCupWins++
@@ -491,11 +531,17 @@ class Game(val teams: List<Team>, val myId: Int) {
                     userOut = true
                 }
             } else {
-                winner = quickWinner(byId(a), byId(b), rnd)
+                val (x, y) = quickScore(byId(a), byId(b), rnd)
+                ga = x
+                gb = y
+                pen = x == y
+                winner = if (x > y) a else if (y > x) b else if (rnd.nextBoolean()) a else b
             }
+            ties.add(KoTie(a, b, ga, gb, pen, winner))
             next.add(winner)
             k += 2
         }
+        c.ko.add(ties)
         c.teams = next
         c.round++
     }
@@ -556,6 +602,7 @@ class Game(val teams: List<Team>, val myId: Int) {
         }
         slotIndex++
         skipAuto()
+        if (!s.euro && !seasonDone) marketTick()
         tick++
     }
 
@@ -591,6 +638,15 @@ class Game(val teams: List<Team>, val myId: Int) {
     private fun closeSeason() {
         val pos = position()
         lastPos = pos
+        val champLiga = table()[0].id
+        val champCl = if (cl.teams.size == 1) cl.teams[0] else null
+        val champEl = if (el.teams.size == 1) el.teams[0] else null
+        pal.getOrPut(champLiga) { Pal() }.liga++
+        if (champCl != null) pal.getOrPut(champCl) { Pal() }.champions++
+        if (champEl != null) pal.getOrPut(champEl) { Pal() }.europa++
+        val nCl = if (champCl != null) byId(champCl).name else "-"
+        val nEl = if (champEl != null) byId(champEl).name else "-"
+        champs.add(0, "Temporada $season · Liga: ${byId(champLiga).name} · Champions: $nCl · Europa: $nEl")
         val out = mutableListOf<Pair<String, Int>>()
         val liga = when {
             pos == 1 -> 30
@@ -628,7 +684,99 @@ class Game(val teams: List<Team>, val myId: Int) {
     private fun canGive(t: Team, p: Player): Boolean =
         t.players.count { it.pos == p.pos } - 1 >= (minPos[p.pos] ?: 0)
 
+    fun jornada(): Int = slots.take(slotIndex).count { !it.euro }
+
+    fun windowOpen(): Boolean {
+        val j = jornada()
+        return j <= 3 || j in 19..21
+    }
+
+    fun windowText(): String {
+        val j = jornada()
+        return when {
+            j <= 3 -> "🟢 Mercado de verano abierto (cierra tras la J4)"
+            j in 19..21 -> "🟢 Mercado de invierno abierto (cierra tras la J22)"
+            j < 19 -> "🔴 Mercado cerrado · abre en invierno (J20)"
+            else -> "🔴 Mercado cerrado · abre en verano (próxima temporada)"
+        }
+    }
+
+    private fun dateLabel(): String {
+        val j = jornada()
+        val w = if (j <= 3) "Verano" else if (j in 19..22) "Invierno" else "Fuera de plazo"
+        return "T$season · $w · " + (if (j == 0) "pretemporada" else "tras J$j")
+    }
+
+    private fun doDeals(n: Int) {
+        val label = dateLabel()
+        val others = league.filter { it.id != myId }
+        var done = 0
+        var tries = 0
+        while (done < n && tries < 80) {
+            tries++
+            val buyer = others.random(rnd)
+            val seller = others.random(rnd)
+            if (buyer.id == seller.id) continue
+            if (buyer.players.size >= 22 || seller.players.size <= 17) continue
+            val p = seller.players.random(rnd)
+            if (!canGive(seller, p)) continue
+            val pr = price(p)
+            seller.players.remove(p)
+            buyer.players.add(p)
+            transfers.add(0, "$label: ${buyer.name} ficha a ${p.name} (${p.pos.label} ${p.rating}) de ${seller.name} por $pr M€")
+            done++
+        }
+        while (transfers.size > 150) transfers.removeAt(transfers.size - 1)
+    }
+
+    private fun maybeOffer() {
+        if (offers.size >= 3 || rnd.nextDouble() > 0.5) return
+        val cand = me.players.filter { it.rating >= 58 && canGive(me, it) && offers.none { o -> o.playerId == it.id } }
+        if (cand.isEmpty()) return
+        val buyers = league.filter { it.id != myId && it.players.size < 22 }
+        if (buyers.isEmpty()) return
+        val p = cand.random(rnd)
+        val amount = maxOf(1, price(p) * (80 + rnd.nextInt(51)) / 100)
+        offers.add(Offer(p.id, buyers.random(rnd).id, amount))
+    }
+
+    private fun marketTick() {
+        val j = jornada()
+        if (j == 4 || j == 22) offers.clear()
+        when {
+            j in 1..3 -> doDeals(3)
+            j == 19 -> doDeals(6)
+            j in 20..21 -> doDeals(3)
+        }
+        if (windowOpen()) maybeOffer()
+    }
+
+    fun acceptOffer(o: Offer): String? {
+        if (!windowOpen()) return "El mercado está cerrado"
+        val p = me.players.firstOrNull { it.id == o.playerId }
+        if (p == null) {
+            offers.remove(o)
+            tick++
+            return "Ese jugador ya no está en tu plantilla"
+        }
+        if (!canGive(me, p)) return "Necesitas más jugadores en esa posición"
+        val buyer = byId(o.buyerId)
+        me.players.remove(p)
+        buyer.players.add(p)
+        budget += o.amount
+        transfers.add(0, "${dateLabel()}: ${buyer.name} ficha a ${p.name} de ${me.name} por ${o.amount} M€")
+        offers.remove(o)
+        tick++
+        return null
+    }
+
+    fun rejectOffer(o: Offer) {
+        offers.remove(o)
+        tick++
+    }
+
     fun buy(p: Player, from: Team): String? {
+        if (!windowOpen()) return "El mercado está cerrado (abre en verano y en invierno)"
         val pr = price(p)
         if (me.players.size >= 24) return "Plantilla llena (máximo 24)"
         if (pr > budget) return "No tienes presupuesto suficiente"
@@ -636,15 +784,20 @@ class Game(val teams: List<Team>, val myId: Int) {
         from.players.remove(p)
         me.players.add(p)
         budget -= pr
+        transfers.add(0, "${dateLabel()}: ${me.name} ficha a ${p.name} (${p.pos.label} ${p.rating}) de ${from.name} por $pr M€")
         tick++
         return null
     }
 
     fun sell(p: Player): String? {
+        if (!windowOpen()) return "El mercado está cerrado (abre en verano y en invierno)"
         if (!canGive(me, p)) return "Necesitas más jugadores en esa posición"
+        val dest = league.filter { it.id != myId && it.players.size < 24 }.random(rnd)
+        val money = price(p) * 8 / 10
         me.players.remove(p)
-        budget += price(p) * 8 / 10
-        league.filter { it.id != myId }.random(rnd).players.add(p)
+        dest.players.add(p)
+        budget += money
+        transfers.add(0, "${dateLabel()}: ${dest.name} ficha a ${p.name} de ${me.name} por $money M€")
         tick++
         return null
     }
@@ -685,6 +838,14 @@ class Game(val teams: List<Team>, val myId: Int) {
         val sa = JSONArray()
         for (s in lastSummary) sa.put(JSONArray().put(s.first).put(s.second))
         o.put("sum", sa)
+        val pa2 = JSONArray()
+        for ((k, v) in pal) pa2.put(JSONArray().put(k).put(v.liga).put(v.champions).put(v.europa))
+        o.put("pal", pa2)
+        o.put("champs", JSONArray(champs))
+        o.put("transfers", JSONArray(transfers))
+        val oa = JSONArray()
+        for (f in offers) oa.put(JSONArray().put(f.playerId).put(f.buyerId).put(f.amount))
+        o.put("offers", oa)
         return o.toString()
     }
 
@@ -733,6 +894,28 @@ class Game(val teams: List<Team>, val myId: Int) {
                 sum.add(Pair(a.getString(0), a.getInt(1)))
             }
             g.lastSummary = sum
+            val pj = o.optJSONArray("pal")
+            if (pj != null) {
+                for (i in 0 until pj.length()) {
+                    val a = pj.getJSONArray(i)
+                    val p = Pal()
+                    p.liga = a.getInt(1)
+                    p.champions = a.getInt(2)
+                    p.europa = a.getInt(3)
+                    g.pal[a.getInt(0)] = p
+                }
+            }
+            val cj = o.optJSONArray("champs")
+            if (cj != null) for (i in 0 until cj.length()) g.champs.add(cj.getString(i))
+            val tj = o.optJSONArray("transfers")
+            if (tj != null) for (i in 0 until tj.length()) g.transfers.add(tj.getString(i))
+            val oj = o.optJSONArray("offers")
+            if (oj != null) {
+                for (i in 0 until oj.length()) {
+                    val a = oj.getJSONArray(i)
+                    g.offers.add(Offer(a.getInt(0), a.getInt(1), a.getInt(2)))
+                }
+            }
             return g
         }
     }

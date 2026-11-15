@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Screen { MENU, EDITOR, EDIT_TEAM, HUB, LINEUP, MATCH, TABLE, MARKET, MARKET_TEAM, SQUAD }
+enum class Screen { MENU, EDITOR, EDIT_TEAM, HUB, LINEUP, MATCH, TABLE, MARKET, MARKET_TEAM, SQUAD, PALMARES }
 
 @Composable
 fun GameApp(activity: Activity) {
@@ -127,6 +127,7 @@ fun GameApp(activity: Activity) {
                             onTable = { screen = Screen.TABLE },
                             onMarket = { screen = Screen.MARKET },
                             onSquad = { screen = Screen.SQUAD },
+                            onPalmares = { screen = Screen.PALMARES },
                             onAd = {
                                 Ads.showRewarded(
                                     activity,
@@ -184,6 +185,7 @@ fun GameApp(activity: Activity) {
                     MarketTeamScreen(g, g.byId(marketId), tick) { screen = Screen.MARKET }
                 }
                 Screen.SQUAD -> if (g != null) SquadScreen(g, tick) { screen = Screen.HUB }
+                Screen.PALMARES -> if (g != null) PalmaresScreen(g, tick) { screen = Screen.HUB }
             }
         }
         BannerAd()

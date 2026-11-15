@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -139,6 +140,7 @@ fun HubScreen(
     onTable: () -> Unit,
     onMarket: () -> Unit,
     onSquad: () -> Unit,
+    onPalmares: () -> Unit,
     onAd: () -> Unit,
     onMenu: () -> Unit
 ) {
@@ -193,6 +195,16 @@ fun HubScreen(
             }
         }
         item {
+            OutlinedButton(onClick = onPalmares, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { Text("🏆 Palmarés") }
+        }
+        item {
+            Text(
+                g.windowText() + (if (g.offers.isNotEmpty() && g.windowOpen()) " · 📩 ${g.offers.size} oferta(s)" else ""),
+                Modifier.padding(top = 8.dp),
+                fontSize = 13.sp
+            )
+        }
+        item {
             Button(onClick = onAd, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
                 Text("▶ Ver anuncio y ganar +5 M€")
             }
@@ -233,12 +245,15 @@ fun TableScreen(g: Game, tick: Int, onBack: () -> Unit) {
 @Composable
 fun TableHeader() {
     Row(Modifier.fillMaxWidth()) {
-        Text("#", Modifier.width(32.dp))
-        Text("", Modifier.width(28.dp))
-        Text("Equipo", Modifier.weight(1f))
-        Text("PJ", Modifier.width(32.dp))
-        Text("DG", Modifier.width(38.dp))
-        Text("Pts", Modifier.width(36.dp), fontWeight = FontWeight.Bold)
+        Text("#", Modifier.width(32.dp), fontSize = 12.sp)
+        Text("", Modifier.width(22.dp))
+        Text("Equipo", Modifier.weight(1f).padding(start = 6.dp), fontSize = 12.sp)
+        Text("PJ", Modifier.width(26.dp), fontSize = 12.sp)
+        Text("G", Modifier.width(22.dp), fontSize = 12.sp)
+        Text("E", Modifier.width(22.dp), fontSize = 12.sp)
+        Text("P", Modifier.width(22.dp), fontSize = 12.sp)
+        Text("DG", Modifier.width(32.dp), fontSize = 12.sp)
+        Text("Pts", Modifier.width(30.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -248,17 +263,23 @@ fun TeamRow(g: Game, r: StandRow, pos: Int, bar: Color) {
     val mine = t.id == g.myId
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(4.dp).height(24.dp).background(bar))
-        Text("$pos", Modifier.width(28.dp).padding(start = 4.dp))
+        Text("$pos", Modifier.width(28.dp).padding(start = 4.dp), fontSize = 13.sp)
         Crest(t, 22.dp)
         Text(
             t.name,
             Modifier.weight(1f).padding(start = 6.dp),
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             fontWeight = if (mine) FontWeight.Bold else FontWeight.Normal,
             color = if (mine) Gold else Color.Unspecified
         )
-        Text("${r.pj}", Modifier.width(32.dp))
-        Text("${r.dg}", Modifier.width(38.dp))
-        Text("${r.pts}", Modifier.width(36.dp), fontWeight = FontWeight.Bold)
+        Text("${r.pj}", Modifier.width(26.dp), fontSize = 13.sp)
+        Text("${r.w}", Modifier.width(22.dp), fontSize = 13.sp)
+        Text("${r.d}", Modifier.width(22.dp), fontSize = 13.sp)
+        Text("${r.l}", Modifier.width(22.dp), fontSize = 13.sp)
+        Text("${r.dg}", Modifier.width(32.dp), fontSize = 13.sp)
+        Text("${r.pts}", Modifier.width(30.dp), fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -297,12 +318,37 @@ fun CupTables(g: Game, c: Cup, modifier: Modifier) {
                 }
             }
         }
-        if (c.teams.isNotEmpty()) {
-            item {
-                Text(
-                    "Eliminatorias · quedan: " + c.teams.joinToString(", ") { g.byId(it).name },
-                    Modifier.padding(top = 4.dp)
-                )
+        item {
+            Column(Modifier.padding(top = 4.dp)) {
+                Text("⚔️ Eliminatorias", fontWeight = FontWeight.Bold, color = Gold)
+                if (c.ko.isEmpty() && c.teams.isEmpty()) {
+                    Text("Se juegan cuando termine la fase de grupos.", fontSize = 13.sp)
+                }
+                c.ko.forEachIndexed { ri, ties ->
+                    Text(koNames[ri], Modifier.padding(top = 8.dp), fontWeight = FontWeight.Bold)
+                    ties.forEach { t ->
+                        val an = g.byId(t.a).name
+                        val bn = g.byId(t.b).name
+                        Text(
+                            "$an ${t.ga}-${t.gb} $bn" + (if (t.pen) " (pen.)" else "") + " → ${g.byId(t.w).name}",
+                            Modifier.padding(vertical = 2.dp),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+                if (c.teams.size >= 2) {
+                    Text(koNames[c.ko.size] + " (pendiente)", Modifier.padding(top = 8.dp), fontWeight = FontWeight.Bold)
+                    c.teams.chunked(2).forEach { par ->
+                        Text(
+                            g.byId(par[0]).name + " vs " + g.byId(par[1]).name,
+                            Modifier.padding(vertical = 2.dp),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+                if (c.teams.size == 1) {
+                    Text("🏆 Campeón: " + g.byId(c.teams[0]).name, Modifier.padding(top = 8.dp), fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -310,16 +356,61 @@ fun CupTables(g: Game, c: Cup, modifier: Modifier) {
 
 @Composable
 fun MarketScreen(g: Game, tick: Int, onTeam: (Int) -> Unit, onBack: () -> Unit) {
+    var tab by remember { mutableIntStateOf(0) }
+    var msg by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Volver") }
-        Text("💰 ${g.budget} M€ · Elige un equipo para ver sus jugadores", Modifier.padding(vertical = 8.dp))
-        LazyColumn(Modifier.weight(1f)) {
-            items(g.league.filter { it.id != g.myId }) { t ->
-                Card(Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onTeam(t.id) }) {
-                    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Crest(t, 30.dp)
-                        Text(t.name, Modifier.weight(1f).padding(start = 12.dp), fontSize = 17.sp)
-                        Text("Nivel ${teamLevel(t)}")
+        Text(g.windowText() + " · 💰 ${g.budget} M€", Modifier.padding(vertical = 6.dp), fontSize = 13.sp)
+        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+            listOf("Fichar", "Traspasos", "Ofertas (${g.offers.size})").forEachIndexed { i, n ->
+                val colors = if (tab == i) ButtonDefaults.buttonColors() else ButtonDefaults.filledTonalButtonColors()
+                Button(
+                    onClick = { tab = i },
+                    colors = colors,
+                    modifier = Modifier.weight(1f).padding(horizontal = 2.dp)
+                ) { Text(n, fontSize = 12.sp) }
+            }
+        }
+        if (msg.isNotEmpty()) Text(msg, color = Gold)
+        if (tab == 0) {
+            LazyColumn(Modifier.weight(1f)) {
+                items(g.league.filter { it.id != g.myId }) { t ->
+                    Card(Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onTeam(t.id) }) {
+                        Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Crest(t, 30.dp)
+                            Text(t.name, Modifier.weight(1f).padding(start = 12.dp), fontSize = 17.sp)
+                            Text("Nivel ${teamLevel(t)}")
+                        }
+                    }
+                }
+            }
+        } else if (tab == 1) {
+            LazyColumn(Modifier.weight(1f)) {
+                if (g.transfers.isEmpty()) {
+                    item { Text("Todavía no hay traspasos.") }
+                }
+                items(g.transfers.toList()) { line -> Text(line, Modifier.padding(vertical = 4.dp), fontSize = 13.sp) }
+            }
+        } else {
+            LazyColumn(Modifier.weight(1f)) {
+                if (g.offers.isEmpty()) {
+                    item { Text("No tienes ofertas ahora mismo. Llegan durante las ventanas de mercado.") }
+                }
+                items(g.offers.toList()) { o ->
+                    val p = g.me.players.firstOrNull { it.id == o.playerId }
+                    if (p != null) {
+                        Card(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text("${g.byId(o.buyerId).name} ofrece ${o.amount} M€ por ${p.name} (${p.pos.label} ${p.rating})")
+                                Row(Modifier.padding(top = 6.dp)) {
+                                    Button(
+                                        onClick = { msg = g.acceptOffer(o) ?: "✅ Traspaso hecho: +${o.amount} M€" },
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    ) { Text("Aceptar") }
+                                    OutlinedButton(onClick = { g.rejectOffer(o); msg = "Oferta rechazada" }) { Text("Rechazar") }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -478,6 +569,46 @@ fun MatchScreen(
         } else {
             res.penalties?.let { Text(it, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp)) }
             Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) { Text("Continuar") }
+        }
+    }
+}
+
+@Composable
+fun PalmaresScreen(g: Game, tick: Int, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Volver") }
+        LazyColumn(Modifier.weight(1f).padding(top = 8.dp)) {
+            item { Text("🏆 Trofeos por equipo", fontWeight = FontWeight.Bold, color = Gold) }
+            val list = g.teams.filter {
+                val p = g.pal[it.id]
+                val total = if (p == null) 0 else p.liga + p.champions + p.europa
+                total > 0 || it.id == g.myId
+            }.sortedByDescending {
+                val p = g.pal[it.id]
+                if (p == null) 0 else (p.liga + p.champions + p.europa) * 10 + p.champions
+            }
+            items(list) { t ->
+                val p = g.pal[t.id]
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Crest(t, 30.dp)
+                    Column(Modifier.padding(start = 10.dp)) {
+                        Text(
+                            t.name,
+                            fontWeight = if (t.id == g.myId) FontWeight.Bold else FontWeight.Normal,
+                            color = if (t.id == g.myId) Gold else Color.Unspecified
+                        )
+                        Text(
+                            "Liga ${p?.liga ?: 0} · Champions ${p?.champions ?: 0} · Europa League ${p?.europa ?: 0}",
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+            item { Text("📜 Campeones por temporada", Modifier.padding(top = 14.dp), fontWeight = FontWeight.Bold, color = Gold) }
+            if (g.champs.isEmpty()) {
+                item { Text("Aún no ha terminado ninguna temporada.", fontSize = 13.sp) }
+            }
+            items(g.champs.toList()) { line -> Text(line, Modifier.padding(vertical = 3.dp), fontSize = 13.sp) }
         }
     }
 }
