@@ -483,7 +483,7 @@ fun MatchScreen(
 }
 
 @Composable
-fun SeasonEndScreen(g: Game, tick: Int, onAd: () -> Unit, onNext: () -> Unit) {
+fun SeasonEndScreen(g: Game, tick: Int, msg: String, onAd: () -> Unit, onNext: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Fin de la temporada ${g.season}", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text("Has acabado ${g.lastPos}º", fontSize = 20.sp, modifier = Modifier.padding(vertical = 6.dp))
@@ -499,6 +499,7 @@ fun SeasonEndScreen(g: Game, tick: Int, onAd: () -> Unit, onNext: () -> Unit) {
             }
         }
         Text("💰 Presupuesto: ${g.budget} M€", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Gold)
+        if (msg.isNotEmpty()) Text(msg, Modifier.padding(top = 6.dp), color = Gold)
         if (!g.adBonus) {
             OutlinedButton(onClick = onAd, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Text("▶ Ver anuncio y ganar +10 M€")

@@ -99,11 +99,17 @@ fun GameApp(activity: Activity) {
                     if (g.seasonDone) {
                         SeasonEndScreen(
                             g, tick,
+                            msg = lastMsg,
                             onAd = {
                                 Ads.showRewarded(
                                     activity,
-                                    onReward = { g.budget += 10; g.adBonus = true; g.tick++ },
-                                    onFail = {}
+                                    onReward = {
+                                        g.budget += 10
+                                        g.adBonus = true
+                                        g.tick++
+                                        lastMsg = "✅ +10 M€ añadidos al presupuesto"
+                                    },
+                                    onFail = { lastMsg = "No hay anuncio disponible ahora mismo. Inténtalo en un minuto." }
                                 )
                             },
                             onNext = { g.nextSeason(); lastMsg = "" }
@@ -124,8 +130,12 @@ fun GameApp(activity: Activity) {
                             onAd = {
                                 Ads.showRewarded(
                                     activity,
-                                    onReward = { g.budget += 5; g.tick++ },
-                                    onFail = {}
+                                    onReward = {
+                                        g.budget += 5
+                                        g.tick++
+                                        lastMsg = "✅ +5 M€ añadidos al presupuesto"
+                                    },
+                                    onFail = { lastMsg = "No hay anuncio disponible ahora mismo. Inténtalo en un minuto." }
                                 )
                             },
                             onMenu = { screen = Screen.MENU }
