@@ -7,6 +7,20 @@ plugins {
 android {
     namespace = "com.example.futbolmanager"
     compileSdk = 35
+
+    signingConfigs {
+        getByName("debug") {
+            val ks = System.getenv("KEYSTORE_PATH")
+            if (!ks.isNullOrEmpty()) {
+                storeFile = file(ks)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+                storeType = "pkcs12"
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.futbolmanager"
         minSdk = 24
