@@ -19,9 +19,9 @@ jobs:
             echo "ERROR: falta el secreto DEBUG_KEYSTORE_BASE64"
             exit 1
           fi
-          mkdir -p ~/.android
-          echo "$KS" | base64 -d > ~/.android/debug.keystore
-          keytool -list -keystore ~/.android/debug.keystore -storepass android | head -6
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/firma.keystore"
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/firma.keystore" >> "$GITHUB_ENV"
+          keytool -list -keystore "$RUNNER_TEMP/firma.keystore" -storepass android | head -6
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.9
