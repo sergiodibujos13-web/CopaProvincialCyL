@@ -1,6 +1,7 @@
 package com.example.futbolmanager
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -15,6 +16,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -22,6 +24,14 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun Crest(team: Team, boxSize: Dp) {
+    if (team.id == REAL_ID) {
+        Image(
+            painter = painterResource(R.drawable.escudo_candeleda),
+            contentDescription = team.name,
+            modifier = Modifier.size(boxSize)
+        )
+        return
+    }
     Box(Modifier.size(boxSize), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val w = size.width

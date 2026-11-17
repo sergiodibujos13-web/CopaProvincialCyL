@@ -91,10 +91,33 @@ private fun makeTeam(id: Int, name: String, rnd: Random, lo: Int, hi: Int): Team
     return Team(id, name, list)
 }
 
+// Equipo REAL (con permiso del club): Atlético Candeleda. Solo nombre y posición, sin fotos ni más datos.
+// Los menores de edad salen con nombre e inicial del apellido hasta tener el permiso de sus padres.
+const val REAL_ID = 2
+
+private fun candeleda(): Team {
+    val data = listOf(
+        Pos.POR to "Sergio Morcuende", Pos.POR to "Javi Luis", Pos.POR to "Alejandro Vinuesa",
+        Pos.DEF to "Juan Antonio Retamal", Pos.DEF to "Sergio Núñez", Pos.DEF to "Abel Gómez",
+        Pos.DEF to "Samuel Núñez", Pos.DEF to "Marcos Corral",
+        Pos.MED to "Daniel Almeida", Pos.MED to "Diego Velasco", Pos.MED to "Sebastián Loan",
+        Pos.MED to "Daniel Calvo", Pos.MED to "Manuel Retamal", Pos.MED to "Óscar González",
+        Pos.MED to "David Peinado", Pos.MED to "Juan Pablo Zárate",
+        Pos.DEL to "Jesús Monforte", Pos.DEL to "Javier Pazos", Pos.DEL to "Mario P.",
+        Pos.DEL to "Álvaro Vega", Pos.DEL to "Iván G.", Pos.DEL to "Víctor Benicio"
+    )
+    val list = mutableListOf<Player>()
+    data.forEachIndexed { i, par -> list.add(Player(REAL_ID * 100 + i, par.second, par.first, 65)) }
+    return Team(REAL_ID, "Atlético Candeleda", list)
+}
+
 fun buildWorld(): List<Team> {
     val rnd = Random(2026)
     val t = mutableListOf<Team>()
-    teamNames.forEachIndexed { i, n -> t.add(makeTeam(i, n, rnd, 56, 72)) }
+    teamNames.forEachIndexed { i, n ->
+        val inventado = makeTeam(i, n, rnd, 56, 72)
+        t.add(if (i == REAL_ID) candeleda() else inventado)
+    }
     for (i in 0 until 25) {
         t.add(makeTeam(100 + i, foreignPrefix[i % 5] + " " + foreignPlaces[i], rnd, 60, 76))
     }
@@ -103,6 +126,7 @@ fun buildWorld(): List<Team> {
 
 fun applySaved(prefs: SharedPreferences, teams: List<Team>) {
     for (t in teams) {
+        if (t.id == REAL_ID) continue
         prefs.getString("t${t.id}", null)?.let { t.name = it }
         for (p in t.players) prefs.getString("p${p.id}", null)?.let { p.name = it }
     }
