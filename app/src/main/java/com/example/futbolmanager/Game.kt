@@ -140,7 +140,7 @@ private fun candeleda(): Team {
         Pos.DEL to "Álvaro Vega", Pos.DEL to "Iván García", Pos.DEL to "Víctor Benicio"
     )
     val list = mutableListOf<Player>()
-    data.forEachIndexed { i, par -> list.add(Player(REAL_ID * 100 + i, par.second, par.first, 65)) }
+    data.forEachIndexed { i, par -> list.add(Player(REAL_ID * 100 + i, par.second, par.first, 80 + (i * 5 + 3) % 7)) }
     return Team(REAL_ID, "Atlético Candeleda", list)
 }
 
