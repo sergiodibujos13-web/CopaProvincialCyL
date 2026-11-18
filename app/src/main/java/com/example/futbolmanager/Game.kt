@@ -32,11 +32,38 @@ val palette: List<Pair<Long, Long>> = listOf(
     0xFFC2185BL to 0xFFFFFFFFL
 )
 
+// Equipos ficticios que se parecen a equipos de la liga española (nombres y escudos NO reales)
+private val reyColors: List<Pair<Long, Long>> = listOf(
+    0xFF5E35B1L to 0xFFFFFFFFL,
+    0xFF1A237EL to 0xFFA50044L,
+    0xFFC62828L to 0xFFFFFFFFL,
+    0xFFB71C1CL to 0xFFFFFFFFL,
+    0xFF1565C0L to 0xFFFFFFFFL,
+    0xFFFDD835L to 0xFF1565C0L,
+    0xFF2E7D32L to 0xFFFFFFFFL,
+    0xFFD32F2FL to 0xFFFFFFFFL,
+    0xFF212121L to 0xFFEF6C00L,
+    0xFF4FC3F7L to 0xFFFFFFFFL,
+    0xFFC62828L to 0xFF0D47A1L,
+    0xFF1976D2L to 0xFFFFFFFFL,
+    0xFFE53935L to 0xFFFFFFFFL,
+    0xFFC62828L to 0xFF212121L
+)
+val customColors: Map<Int, Pair<Long, Long>> = buildMap {
+    reyColors.forEachIndexed { i, c -> put(100 + i, c) }
+    val padres = listOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13)
+    padres.forEachIndexed { k, pi -> put(114 + k, reyColors[pi]) }
+}
+val customPattern: Map<Int, Int> = buildMap {
+    for (i in 0 until 14) put(100 + i, i % 2)
+    for (k in 0 until 12) put(114 + k, 2)
+}
+
 class Team(val id: Int, name: String, val players: MutableList<Player>) {
     var name by mutableStateOf(name)
-    val c1: Long get() = palette[id % palette.size].first
-    val c2: Long get() = palette[id % palette.size].second
-    val pattern: Int get() = (id / 3) % 3
+    val c1: Long get() = customColors[id]?.first ?: palette[id % palette.size].first
+    val c2: Long get() = customColors[id]?.second ?: palette[id % palette.size].second
+    val pattern: Int get() = customPattern[id] ?: ((id / 3) % 3)
     val initials: String
         get() {
             val w = name.trim().split(" ").filter { it.isNotEmpty() }
@@ -61,11 +88,17 @@ private val teamNames = listOf(
     "CF Puente", "UD Castillo", "Real Dehesa", "SD Lagos", "CD Fuente",
     "Alcázar CF", "Unión Cañada", "Deportivo Encina", "Racing Peña", "Sporting Cerro"
 )
-private val foreignPrefix = listOf("FC", "SK", "AC", "Dinamo", "Olympia")
-private val foreignPlaces = listOf(
-    "Nordstad", "Valmont", "Brandor", "Zelenia", "Corvia", "Mirador", "Tessal", "Lorwick", "Draga",
-    "Sunderby", "Pelagia", "Ostrova", "Quenta", "Rivermoor", "Saltara", "Thornby", "Umbria",
-    "Veloria", "Wexmar", "Xanthe", "Yorvik", "Zanora", "Aldermoor", "Belmar", "Cordell"
+// 14 equipos que se parecen a los de Primera (Copa del Rey) y 12 filiales (Copa de CyL). Todos inventados.
+private val copaReyNames = listOf(
+    "Real Madrigal CF", "FC Barcelonia", "Atlético Capitalino", "Athletic Vizcaya",
+    "Real Sociedad Costera", "Villaroja CF", "Real Bética FC", "FC Sevillano",
+    "Valentia CF", "Celta Atlántico", "Atlético Navarro", "Getafino CF",
+    "Rayo Vallecito", "Real Maiorca"
+)
+private val copaCyLNames = listOf(
+    "Real Madrigal C", "FC Barcelonia B", "Atlético Capitalino B", "Athletic Vizcaya B",
+    "Real Sociedad Costera B", "Villaroja B", "Real Bética B", "FC Sevillano B",
+    "Valentia B", "Celta Atlántico B", "Rayo Vallecito B", "Real Maiorca B"
 )
 private val firstNames = listOf(
     "Alex", "Dani", "Sergio", "Pablo", "Iván", "Hugo", "Marcos", "Raúl", "Adrián", "Javi",
@@ -118,9 +151,8 @@ fun buildWorld(): List<Team> {
         val inventado = makeTeam(i, n, rnd, 56, 72)
         t.add(if (i == REAL_ID) candeleda() else inventado)
     }
-    for (i in 0 until 25) {
-        t.add(makeTeam(100 + i, foreignPrefix[i % 5] + " " + foreignPlaces[i], rnd, 60, 76))
-    }
+    for (i in 0 until 14) t.add(makeTeam(100 + i, copaReyNames[i], rnd, 66, 80))
+    for (i in 0 until 12) t.add(makeTeam(114 + i, copaCyLNames[i], rnd, 52, 66))
     return t
 }
 
@@ -366,8 +398,8 @@ class Game(val teams: List<Team>, val myId: Int) {
     var energy = HashMap<Int, Int>()
     var rows = HashMap<Int, StandRow>()
     var fixtures: List<List<Pair<Int, Int>>> = emptyList()
-    var cl = Cup("Champions League")
-    var el = Cup("Europa League")
+    var cl = Cup("Copa del Rey")
+    var el = Cup("Copa de CyL")
     var userCup: Cup? = null
     var pal = HashMap<Int, Pal>()
     var champs: MutableList<String> = mutableListOf()
@@ -432,7 +464,7 @@ class Game(val teams: List<Team>, val myId: Int) {
 
     fun slotTitle(s: Slot): String {
         if (!s.euro) return "Liga · Jornada ${s.idx + 1}"
-        val nm = if (userCup === el) "Europa League" else "Champions League"
+        val nm = if (userCup === el) "Copa de CyL" else "Copa del Rey"
         return nm + " · " + (if (s.idx < 6) "Fase de grupos J${s.idx + 1}" else koNames[s.idx - 6])
     }
 
@@ -448,9 +480,11 @@ class Game(val teams: List<Team>, val myId: Int) {
         rows = HashMap()
         for (t in league) rows[t.id] = StandRow(t.id)
         fixtures = buildFixtures(league.map { it.id }.shuffled(r))
-        val foreign = teams.filter { it.id >= 100 }.map { it.id }.shuffled(r)
-        cl = newCup("Champions League", (ranking.take(4) + foreign.take(12)).shuffled(r))
-        el = newCup("Europa League", (ranking.subList(4, 7) + foreign.subList(12, 25)).shuffled(r))
+        val primera = teams.filter { it.id in 100..113 }.map { it.id }.shuffled(r)
+        val filiales = teams.filter { it.id in 114..125 }.map { it.id }.shuffled(r)
+        // Copa del Rey: 1º y 2º de la liga + 14 equipos tipo Primera. Copa de CyL: del 3º al 6º + 12 filiales.
+        cl = newCup("Copa del Rey", (ranking.take(2) + primera).shuffled(r))
+        el = newCup("Copa de CyL", (ranking.subList(2, 6) + filiales).shuffled(r))
         userCup = if (cl.groups.any { myId in it }) cl else if (el.groups.any { myId in it }) el else null
         userCupWins = 0
         userOut = false
@@ -643,7 +677,7 @@ class Game(val teams: List<Team>, val myId: Int) {
             } else {
                 val c = userCup
                 if (c != null) {
-                    val nm = if (c === cl) "Champions" else "Europa League"
+                    val nm = if (c === cl) "Copa del Rey" else "Copa de CyL"
                     if (s.idx < 6) {
                         val p = cupPair(c, s.idx)
                         val home = p.first == myId
@@ -670,7 +704,7 @@ class Game(val teams: List<Team>, val myId: Int) {
         if (champEl != null) pal.getOrPut(champEl) { Pal() }.europa++
         val nCl = if (champCl != null) byId(champCl).name else "-"
         val nEl = if (champEl != null) byId(champEl).name else "-"
-        champs.add(0, "Temporada $season · Liga: ${byId(champLiga).name} · Champions: $nCl · Europa: $nEl")
+        champs.add(0, "Temporada $season · Liga: ${byId(champLiga).name} · Copa del Rey: $nCl · Copa de CyL: $nEl")
         val out = mutableListOf<Pair<String, Int>>()
         val liga = when {
             pos == 1 -> 30
@@ -687,7 +721,7 @@ class Game(val teams: List<Team>, val myId: Int) {
         val c = userCup
         if (c != null) {
             val isCl = c === cl
-            val nm = if (isCl) "Champions League" else "Europa League"
+            val nm = if (isCl) "Copa del Rey" else "Copa de CyL"
             val part = if (isCl) 10 else 5
             val prize = if (isCl) listOf(0, 12, 20, 30, 50) else listOf(0, 6, 10, 15, 25)
             val reached = listOf("", "cuartos", "semifinales", "la final", "campeón")
@@ -829,7 +863,7 @@ class Game(val teams: List<Team>, val myId: Int) {
     // ---------- Guardado ----------
     fun toJson(): String {
         val o = JSONObject()
-        o.put("ver", 2)
+        o.put("ver", 3)
         o.put("my", myId)
         o.put("season", season)
         o.put("budget", budget)
@@ -876,7 +910,7 @@ class Game(val teams: List<Team>, val myId: Int) {
     companion object {
         fun fromJson(s: String): Game {
             val o = JSONObject(s)
-            if (o.getInt("ver") != 2) throw IllegalStateException("partida antigua")
+            if (o.getInt("ver") != 3) throw IllegalStateException("partida antigua")
             val ts = o.getJSONArray("teams")
             val list = ArrayList<Team>()
             for (i in 0 until ts.length()) {
@@ -902,8 +936,8 @@ class Game(val teams: List<Team>, val myId: Int) {
             g.lastPos = o.getInt("lastpos")
             g.fixtures = buildFixtures(g.league.map { it.id }.shuffled(Random(g.seed)))
             g.rows = readRows(o.getJSONArray("rows"))
-            g.cl = readCup("Champions League", o.getJSONObject("cl"))
-            g.el = readCup("Europa League", o.getJSONObject("el"))
+            g.cl = readCup("Copa del Rey", o.getJSONObject("cl"))
+            g.el = readCup("Copa de CyL", o.getJSONObject("el"))
             val uc = o.getString("cup")
             g.userCup = if (uc == "cl") g.cl else if (uc == "el") g.el else null
             val ea = o.getJSONArray("energy")

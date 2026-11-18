@@ -80,6 +80,11 @@ fun MenuScreen(
         OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
             Text("✏️ Editar equipos y jugadores")
         }
+        Text(
+            "Creado por Sergio Barrero Riaño",
+            Modifier.padding(top = 10.dp).align(Alignment.CenterHorizontally),
+            fontSize = 12.sp
+        )
     }
 }
 
@@ -235,7 +240,7 @@ fun TableScreen(g: Game, tick: Int, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Volver") }
         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-            listOf("Liga", "Champions", "Europa L.").forEachIndexed { i, n ->
+            listOf("Liga", "Copa del Rey", "Copa de CyL").forEachIndexed { i, n ->
                 val colors = if (tab == i) ButtonDefaults.buttonColors() else ButtonDefaults.filledTonalButtonColors()
                 Button(
                     onClick = { tab = i },
@@ -294,13 +299,13 @@ fun TeamRow(g: Game, r: StandRow, pos: Int, bar: Color) {
 fun LeagueTable(g: Game, modifier: Modifier) {
     val tb = g.table()
     Column(modifier) {
-        Text("🔵 Champions · 🟠 Europa League · 🔴 Descenso", Modifier.padding(bottom = 6.dp), fontSize = 13.sp)
+        Text("🔵 Copa del Rey (1º-2º) · 🟠 Copa de CyL (3º-6º) · 🔴 Descenso", Modifier.padding(bottom = 6.dp), fontSize = 13.sp)
         TableHeader()
         LazyColumn(Modifier.weight(1f)) {
             itemsIndexed(tb) { i, r ->
                 val bar = when {
-                    i < 4 -> Color(0xFF42A5F5)
-                    i < 7 -> Color(0xFFFFA726)
+                    i < 2 -> Color(0xFF42A5F5)
+                    i < 6 -> Color(0xFFFFA726)
                     i >= 17 -> Color(0xFFEF5350)
                     else -> Color.Transparent
                 }
@@ -608,7 +613,7 @@ fun PalmaresScreen(g: Game, tick: Int, onBack: () -> Unit) {
                             color = if (t.id == g.myId) Gold else Color.Unspecified
                         )
                         Text(
-                            "Liga ${p?.liga ?: 0} · Champions ${p?.champions ?: 0} · Europa League ${p?.europa ?: 0}",
+                            "Liga ${p?.liga ?: 0} · Copa del Rey ${p?.champions ?: 0} · Copa de CyL ${p?.europa ?: 0}",
                             fontSize = 13.sp
                         )
                     }
