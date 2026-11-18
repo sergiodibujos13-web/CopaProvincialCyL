@@ -436,7 +436,8 @@ fun MarketTeamScreen(g: Game, t: Team, tick: Int, onBack: () -> Unit) {
             items(t.players.sortedByDescending { it.rating }) { p ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(p.pos.label, Modifier.width(40.dp))
-                    Text(p.name, Modifier.weight(1f))
+                    PlayerFace(p, 34.dp)
+                    Text(p.name, Modifier.weight(1f).padding(start = 6.dp))
                     Text("${p.rating}", Modifier.width(34.dp))
                     Button(onClick = { msg = g.buy(p, t) ?: "✅ Fichado ${p.name}" }) { Text("${price(p)} M€") }
                 }
@@ -456,7 +457,8 @@ fun SquadScreen(g: Game, tick: Int, onBack: () -> Unit) {
             items(g.me.players.sortedWith(compareBy({ it.pos.ordinal }, { -it.rating }))) { p ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(p.pos.label, Modifier.width(40.dp))
-                    Text(p.name, Modifier.weight(1f))
+                    PlayerFace(p, 34.dp)
+                    Text(p.name, Modifier.weight(1f).padding(start = 6.dp))
                     Text("${p.rating}", Modifier.width(34.dp))
                     OutlinedButton(onClick = { msg = g.sell(p) ?: "💰 Vendido ${p.name}" }) {
                         Text("${price(p) * 8 / 10} M€")
@@ -525,7 +527,8 @@ fun LineupScreen(
                 ) {
                     Checkbox(checked = on, onCheckedChange = null)
                     Text(p.pos.label, Modifier.width(44.dp).padding(start = 8.dp))
-                    Text(p.name, Modifier.weight(1f))
+                    PlayerFace(p, 34.dp)
+                    Text(p.name, Modifier.weight(1f).padding(start = 6.dp))
                     Text("${p.rating} · ⚡${energyOf(p)}%")
                 }
             }
