@@ -125,7 +125,7 @@ private fun makeTeam(id: Int, name: String, rnd: Random, lo: Int, hi: Int): Team
 }
 
 // Equipo REAL (con permiso del club): Atlético Candeleda. Solo nombre y posición, sin fotos ni más datos.
-// Los menores de edad salen con nombre e inicial del apellido (y sin foto) hasta tener el permiso de sus padres.
+// Si hay menores de edad, solo salen con el permiso de sus padres.
 const val REAL_ID = 2
 
 private fun candeleda(): Team {
@@ -136,7 +136,7 @@ private fun candeleda(): Team {
         Pos.MED to "Daniel Almeida", Pos.MED to "Diego Velasco", Pos.MED to "Sebastián Loan",
         Pos.MED to "Daniel Calvo", Pos.MED to "Manuel Retamal", Pos.MED to "Óscar González",
         Pos.MED to "David Peinado", Pos.MED to "Juan Pablo Zárate",
-        Pos.DEL to "Jesús Monforte", Pos.DEL to "Javier Pazos", Pos.DEL to "Mario P.",
+        Pos.DEL to "Jesús Monforte", Pos.DEL to "Javier Pazos", Pos.DEL to "Mario Peinado",
         Pos.DEL to "Álvaro Vega", Pos.DEL to "Iván García", Pos.DEL to "Víctor Benicio"
     )
     val list = mutableListOf<Player>()
