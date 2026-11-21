@@ -175,7 +175,7 @@ fun autoLineup(team: Team, f: Formation, energyOf: (Player) -> Int): List<Player
     return best(Pos.POR, 1) + best(Pos.DEF, f.def) + best(Pos.MED, f.med) + best(Pos.DEL, f.del)
 }
 
-data class MatchEvent(val minute: Int, val text: String, val homeGoals: Int, val awayGoals: Int)
+data class MatchEvent(val minute: Int, val text: String, val homeGoals: Int, val awayGoals: Int, val scorer: Int = -1)
 
 data class MatchResult(
     val events: List<MatchEvent>,
@@ -214,7 +214,7 @@ fun simulate(
             val who = l.filter { it.pos == Pos.MED || it.pos == Pos.DEL }.random(rnd)
             if (rnd.nextDouble() < (0.30 * a / d).coerceIn(0.08, 0.55)) {
                 if (mine) g1++ else g2++
-                ev.add(MatchEvent(m, "⚽ ¡GOL de ${who.name} ($tn)!", g1, g2))
+                ev.add(MatchEvent(m, "⚽ ¡GOL de ${who.name} ($tn)!", g1, g2, who.id))
             } else {
                 ev.add(MatchEvent(m, "Ocasión de ${who.name} ($tn), ¡no entra!", g1, g2))
             }
@@ -285,6 +285,7 @@ class KoTie(val a: Int, val b: Int, val ga: Int, val gb: Int, val pen: Boolean, 
 class Offer(val playerId: Int, val buyerId: Int, val amount: Int)
 
 class Cup(val name: String) {
+    var goals = HashMap<Int, Int>()
     var ko: MutableList<MutableList<KoTie>> = mutableListOf()
     var groups: List<List<Int>> = emptyList()
     var rows = HashMap<Int, StandRow>()
@@ -327,6 +328,23 @@ private fun readRows(a: JSONArray): HashMap<Int, StandRow> {
     return m
 }
 
+private fun goalsJson(m: Map<Int, Int>): JSONArray {
+    val a = JSONArray()
+    for ((k, v) in m) a.put(JSONArray().put(k).put(v))
+    return a
+}
+
+private fun readGoals(a: JSONArray?): HashMap<Int, Int> {
+    val m = HashMap<Int, Int>()
+    if (a != null) {
+        for (i in 0 until a.length()) {
+            val x = a.getJSONArray(i)
+            m[x.getInt(0)] = x.getInt(1)
+        }
+    }
+    return m
+}
+
 private fun rowsJson(m: Map<Int, StandRow>): JSONArray {
     val a = JSONArray()
     for (r in m.values) a.put(JSONArray().put(r.id).put(r.pj).put(r.w).put(r.d).put(r.l).put(r.gf).put(r.gc))
@@ -341,6 +359,7 @@ private fun cupJson(c: Cup): JSONObject {
     for (grp in c.groups) ga.put(JSONArray(grp))
     o.put("groups", ga)
     o.put("rows", rowsJson(c.rows))
+    o.put("goals", goalsJson(c.goals))
     val ka = JSONArray()
     for (ties in c.ko) {
         val ra = JSONArray()
@@ -367,6 +386,7 @@ private fun readCup(name: String, o: JSONObject): Cup {
     }
     c.groups = gl
     c.rows = readRows(o.getJSONArray("rows"))
+    c.goals = readGoals(o.optJSONArray("goals"))
     val ka = o.optJSONArray("ko")
     if (ka != null) {
         for (i in 0 until ka.length()) {
@@ -405,6 +425,9 @@ class Game(val teams: List<Team>, val myId: Int) {
     var champs: MutableList<String> = mutableListOf()
     var transfers: MutableList<String> = mutableListOf()
     var offers: MutableList<Offer> = mutableListOf()
+    var goals = HashMap<Int, Int>()
+    var balones: MutableList<String> = mutableListOf()
+    var lastBalon = ""
 
     private val map = teams.associateBy { it.id }
     private val rnd: Random = Random.Default
@@ -478,6 +501,7 @@ class Game(val teams: List<Team>, val myId: Int) {
     fun startSeason(ranking: List<Int>) {
         val r = Random(seed)
         rows = HashMap()
+        goals = HashMap()
         for (t in league) rows[t.id] = StandRow(t.id)
         fixtures = buildFixtures(league.map { it.id }.shuffled(r))
         val primera = teams.filter { it.id in 100..113 }.map { it.id }.shuffled(r)
@@ -538,9 +562,12 @@ class Game(val teams: List<Team>, val myId: Int) {
                 if (res != null && (h == myId || a == myId)) {
                     if (h == myId) record(c.rows, h, a, res.home, res.away)
                     else record(c.rows, h, a, res.away, res.home)
+                    addUserGoals(c.goals, res)
                 } else {
                     val (x, y) = quickScore(byId(h), byId(a), rnd)
                     record(c.rows, h, a, x, y)
+                    addAiGoals(c.goals, byId(h), x)
+                    addAiGoals(c.goals, byId(a), y)
                 }
             }
         }
@@ -578,6 +605,7 @@ class Game(val teams: List<Team>, val myId: Int) {
             val pen: Boolean
             if (res != null && (a == myId || b == myId)) {
                 val other = if (a == myId) b else a
+                addUserGoals(c.goals, res)
                 ga = if (a == myId) res.home else res.away
                 gb = if (a == myId) res.away else res.home
                 pen = res.penalties != null
@@ -590,6 +618,8 @@ class Game(val teams: List<Team>, val myId: Int) {
                 }
             } else {
                 val (x, y) = quickScore(byId(a), byId(b), rnd)
+                addAiGoals(c.goals, byId(a), x)
+                addAiGoals(c.goals, byId(b), y)
                 ga = x
                 gb = y
                 pen = x == y
@@ -602,6 +632,54 @@ class Game(val teams: List<Team>, val myId: Int) {
         c.ko.add(ties)
         c.teams = next
         c.round++
+    }
+
+    private fun scorerOf(t: Team): Int {
+        val w = t.players.map {
+            val base = when (it.pos) {
+                Pos.DEL -> 6
+                Pos.MED -> 3
+                Pos.DEF -> 1
+                Pos.POR -> 0
+            }
+            base * it.rating
+        }
+        val total = w.sum()
+        if (total <= 0) return -1
+        var r = rnd.nextInt(total)
+        for (i in w.indices) {
+            r -= w[i]
+            if (r < 0) return t.players[i].id
+        }
+        return t.players.last().id
+    }
+
+    private fun addAiGoals(m: HashMap<Int, Int>, t: Team, n: Int) {
+        for (i in 0 until n) {
+            val id = scorerOf(t)
+            if (id >= 0) m[id] = (m[id] ?: 0) + 1
+        }
+    }
+
+    private fun addUserGoals(m: HashMap<Int, Int>, res: MatchResult) {
+        for (e in res.events) {
+            if (e.scorer >= 0) m[e.scorer] = (m[e.scorer] ?: 0) + 1
+        }
+    }
+
+    fun findPlayer(id: Int): Pair<Player, Team>? {
+        for (t in teams) for (p in t.players) if (p.id == id) return Pair(p, t)
+        return null
+    }
+
+    fun top(m: Map<Int, Int>, n: Int): List<Triple<Player, Team, Int>> {
+        val list = mutableListOf<Triple<Player, Team, Int>>()
+        for ((k, v) in m) {
+            val f = findPlayer(k)
+            if (f != null) list.add(Triple(f.first, f.second, v))
+        }
+        return list.sortedWith(compareByDescending<Triple<Player, Team, Int>> { it.third }.thenByDescending { it.first.rating })
+            .take(n)
     }
 
     private fun record(m: HashMap<Int, StandRow>, x: Int, y: Int, gx: Int, gy: Int) {
@@ -649,10 +727,13 @@ class Game(val teams: List<Team>, val myId: Int) {
             val pair = leaguePair(s.idx)
             val opp = if (pair.first == myId) pair.second else pair.first
             record(rows, myId, opp, res.home, res.away)
+            addUserGoals(goals, res)
             for ((h, a) in fixtures[s.idx]) {
                 if (h != myId && a != myId) {
                     val (x, y) = quickScore(byId(h), byId(a), rnd)
                     record(rows, h, a, x, y)
+                    addAiGoals(goals, byId(h), x)
+                    addAiGoals(goals, byId(a), y)
                 }
             }
         } else {
@@ -734,6 +815,39 @@ class Game(val teams: List<Team>, val myId: Int) {
             }
         }
         if (pos >= 18) out.add(Pair("📉 Descenso (sin 2ª división): sanción", -15))
+        // Balón de Oro: goles (x2) + premio si su equipo gana un título + pequeño extra por nivel
+        val totalGoals = HashMap<Int, Int>()
+        for (m in listOf(goals, cl.goals, el.goals)) {
+            for ((k, v) in m) totalGoals[k] = (totalGoals[k] ?: 0) + v
+        }
+        val bonusTeam = HashMap<Int, Double>()
+        bonusTeam[champLiga] = 6.0
+        val sub = table()[1].id
+        bonusTeam[sub] = (bonusTeam[sub] ?: 0.0) + 3.0
+        if (champCl != null) bonusTeam[champCl] = (bonusTeam[champCl] ?: 0.0) + 2.0
+        if (champEl != null) bonusTeam[champEl] = (bonusTeam[champEl] ?: 0.0) + 2.0
+        var bestScore = -1.0
+        var bestP: Player? = null
+        var bestT: Team? = null
+        for (t in teams) {
+            for (p in t.players) {
+                val gp = totalGoals[p.id] ?: 0
+                if (gp == 0 && totalGoals.isNotEmpty()) continue
+                val sc = 2.0 * gp + (bonusTeam[t.id] ?: 0.0) + p.rating / 100.0
+                if (sc > bestScore) {
+                    bestScore = sc
+                    bestP = p
+                    bestT = t
+                }
+            }
+        }
+        val bp = bestP
+        val bt = bestT
+        if (bp != null && bt != null) {
+            lastBalon = "${bp.name} (${bt.name}) · ${totalGoals[bp.id] ?: 0} goles"
+            balones.add(0, "Temporada $season · ${bp.name} (${bt.name})")
+            if (bt.id == myId) out.add(Pair("🥇 Balón de Oro: ${bp.name}", 5))
+        }
         lastSummary = out
         budget = maxOf(0, budget + out.sumOf { it.second })
     }
@@ -904,6 +1018,9 @@ class Game(val teams: List<Team>, val myId: Int) {
         val oa = JSONArray()
         for (f in offers) oa.put(JSONArray().put(f.playerId).put(f.buyerId).put(f.amount))
         o.put("offers", oa)
+        o.put("goals", goalsJson(goals))
+        o.put("balones", JSONArray(balones))
+        o.put("lastbalon", lastBalon)
         return o.toString()
     }
 
@@ -974,6 +1091,10 @@ class Game(val teams: List<Team>, val myId: Int) {
                     g.offers.add(Offer(a.getInt(0), a.getInt(1), a.getInt(2)))
                 }
             }
+            g.goals = readGoals(o.optJSONArray("goals"))
+            val bj = o.optJSONArray("balones")
+            if (bj != null) for (i in 0 until bj.length()) g.balones.add(bj.getString(i))
+            g.lastBalon = o.optString("lastbalon", "")
             return g
         }
     }

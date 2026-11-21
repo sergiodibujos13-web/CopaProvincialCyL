@@ -153,6 +153,7 @@ fun HubScreen(
     onMarket: () -> Unit,
     onSquad: () -> Unit,
     onPalmares: () -> Unit,
+    onScorers: () -> Unit,
     onAd: () -> Unit,
     onMenu: () -> Unit
 ) {
@@ -207,7 +208,10 @@ fun HubScreen(
             }
         }
         item {
-            OutlinedButton(onClick = onPalmares, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { Text("🏆 Palmarés") }
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                OutlinedButton(onClick = onPalmares, modifier = Modifier.weight(1f).padding(end = 4.dp)) { Text("🏆 Palmarés") }
+                OutlinedButton(onClick = onScorers, modifier = Modifier.weight(1f).padding(start = 4.dp)) { Text("⚽ Goleadores") }
+            }
         }
         item {
             Text(
@@ -624,6 +628,59 @@ fun PalmaresScreen(g: Game, tick: Int, onBack: () -> Unit) {
                 item { Text("Aún no ha terminado ninguna temporada.", fontSize = 13.sp) }
             }
             items(g.champs.toList()) { line -> Text(line, Modifier.padding(vertical = 3.dp), fontSize = 13.sp) }
+            item { Text("🥇 Balón de Oro", Modifier.padding(top = 14.dp), fontWeight = FontWeight.Bold, color = Gold) }
+            if (g.balones.isEmpty()) {
+                item { Text("Aún no se ha entregado ninguno.", fontSize = 13.sp) }
+            }
+            items(g.balones.toList()) { line -> Text(line, Modifier.padding(vertical = 3.dp), fontSize = 13.sp) }
+        }
+    }
+}
+
+@Composable
+fun ScorersScreen(g: Game, tick: Int, onBack: () -> Unit) {
+    var tab by remember { mutableIntStateOf(0) }
+    val map = when (tab) {
+        0 -> g.goals
+        1 -> g.cl.goals
+        else -> g.el.goals
+    }
+    val list = g.top(map, 20)
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Volver") }
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            listOf("Liga", "Copa del Rey", "Copa de CyL").forEachIndexed { i, n ->
+                val colors = if (tab == i) ButtonDefaults.buttonColors() else ButtonDefaults.filledTonalButtonColors()
+                Button(
+                    onClick = { tab = i },
+                    colors = colors,
+                    modifier = Modifier.weight(1f).padding(horizontal = 2.dp)
+                ) { Text(n, fontSize = 13.sp) }
+            }
+        }
+        Text("⚽ Máximos goleadores · temporada ${g.season}", fontWeight = FontWeight.Bold, color = Gold)
+        if (list.isEmpty()) {
+            Text("Todavía no hay goles.", Modifier.padding(top = 8.dp))
+        }
+        LazyColumn(Modifier.weight(1f).padding(top = 6.dp)) {
+            itemsIndexed(list) { i, t ->
+                val p = t.first
+                val team = t.second
+                val mine = team.id == g.myId
+                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${i + 1}", Modifier.width(28.dp))
+                    Crest(team, 26.dp)
+                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                        Text(
+                            p.name,
+                            fontWeight = if (mine) FontWeight.Bold else FontWeight.Normal,
+                            color = if (mine) Gold else Color.Unspecified
+                        )
+                        Text(team.name, fontSize = 12.sp)
+                    }
+                    Text("${t.third} ⚽", fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -633,6 +690,9 @@ fun SeasonEndScreen(g: Game, tick: Int, msg: String, onAd: () -> Unit, onNext: (
     Column(Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Fin de la temporada ${g.season}", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text("Has acabado ${g.lastPos}º", fontSize = 20.sp, modifier = Modifier.padding(vertical = 6.dp))
+        if (g.lastBalon.isNotEmpty()) {
+            Text("🥇 Balón de Oro: ${g.lastBalon}", color = Gold, fontWeight = FontWeight.Bold)
+        }
         if (g.lastPos >= 18) {
             Text("📉 Descenso: como no hay 2ª división, pagas una sanción del presupuesto", color = Color(0xFFEF5350))
         }
